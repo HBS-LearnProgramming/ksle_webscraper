@@ -8,6 +8,7 @@ use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\ExcelExport;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 
 class WebScrapKlseControler extends Controller
 {
@@ -258,15 +259,14 @@ class WebScrapKlseControler extends Controller
                     $excelDate = ($date) ? Date::PHPToExcel($date) : $trancDate;
                     // Fill data into respective columns
                     $currentDate = Date::PHPToExcel(now());
-                    $worksheet->setCellValueByColumnAndRow($noIndex + 1, $rowIndex, $indexNo);
-                    $worksheet->setCellValueByColumnAndRow($nameIndex + 1, $rowIndex, $data['name']);
-                    $worksheet->setCellValueByColumnAndRow($annoDateIndex + 1, $rowIndex, $currentDate);
-                    $worksheet->setCellValueByColumnAndRow($trancDateIndex + 1, $rowIndex, $excelDate);
-                    $worksheet->setCellValueByColumnAndRow($percentIndex + 1, $rowIndex, $data['directPercentage'].'%');
-                    $worksheet->setCellValueByColumnAndRow($companyIndex + 1, $rowIndex, $company_name);
-                    $worksheet->setCellValueByColumnAndRow($buyIndex + 1, $rowIndex, ($table_data['Acquired']??null));
-                    $worksheet->setCellValueByColumnAndRow($sellIndex + 1, $rowIndex, ($table_data['Disposed'] ?? null));
-              
+                    $worksheet->setCellValue(Coordinate::stringFromColumnIndex($noIndex + 1) . $rowIndex, $indexNo);
+                    $worksheet->setCellValue(Coordinate::stringFromColumnIndex($nameIndex + 1) . $rowIndex, $data['name']);
+                    $worksheet->setCellValue(Coordinate::stringFromColumnIndex($annoDateIndex + 1) . $rowIndex, $currentDate);
+                    $worksheet->setCellValue(Coordinate::stringFromColumnIndex($trancDateIndex + 1) . $rowIndex, $excelDate);
+                    $worksheet->setCellValue(Coordinate::stringFromColumnIndex($percentIndex + 1) . $rowIndex, $data['directPercentage'] . '%');
+                    $worksheet->setCellValue(Coordinate::stringFromColumnIndex($companyIndex + 1) . $rowIndex, $company_name);
+                    $worksheet->setCellValue(Coordinate::stringFromColumnIndex($buyIndex + 1) . $rowIndex, $table_data['Acquired'] ?? null);
+                    $worksheet->setCellValue(Coordinate::stringFromColumnIndex($sellIndex + 1) . $rowIndex, $table_data['Disposed'] ?? null);
                     $indexNo++;
                 }
 
