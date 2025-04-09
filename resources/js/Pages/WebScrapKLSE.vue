@@ -113,7 +113,7 @@ export default {
 
                 if (response.status === 200) {
                     const now = new Date();
-                    const formattedDate = now.toISOString().slice(0, 10).replace(/-/g, '_'); // e.g. 2025_04_02
+                    const formattedDate = now.toISOString().slice(0, 10).replace(/-/g, '_');
                     const filename = `${formattedDate}_KSLE_Scraper.xlsx`;
                     const url = window.URL.createObjectURL(new Blob([response.data]));
                     const link = document.createElement('a');
@@ -153,6 +153,4 @@ export default {
         };
     },
 };
-
-
 </script>
