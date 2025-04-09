@@ -94,19 +94,19 @@ export default {
         });
         
         const handleSubmit = async () =>{
-            swal.fire({
-                title: "Scraping...",
-                timer: 1000,
-                didOpen: () => {
-                    swal.showLoading();
-                },
-            });
+            
             const formData = new FormData();
             formData.append("stocks", JSON.stringify(form.stocks)); // Convert array to string
             formData.append("file", form.file); // Append file
             
             try {
-                const response = await axios.post('/webScrapKlse', formData, {
+                swal.fire({
+                    title: "Scraping...",
+                    didOpen: () => {
+                        swal.showLoading();
+                    },
+                });
+                const response = await axios.post('/', formData, {
                     headers: { "Content-Type": "multipart/form-data" },
                     responseType: 'blob' // Ensure binary data for file download
                 });
@@ -122,6 +122,7 @@ export default {
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
+                    swal.close();
                 }
                
             } catch (error) {

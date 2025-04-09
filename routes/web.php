@@ -16,5 +16,7 @@ use App\Http\Controllers\WebScrapKlseControler;
 Route::get('/', function () {
     return redirect()->route('webscrap.form');
 });
-Route::get('/webScrapKlse', [WebScrapKlseControler::class, 'index'])->name('webscrap.form');
-Route::post('/webScrapKlse', [WebScrapKlseControler::class, 'formSubmit']);
+Route::get('/', [WebScrapKlseControler::class, 'index'])->name('webscrap.form');
+Route::post('/', [WebScrapKlseControler::class, 'formSubmit']);
+
+

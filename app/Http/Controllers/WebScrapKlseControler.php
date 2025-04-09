@@ -13,6 +13,7 @@ use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 class WebScrapKlseControler extends Controller
 {
     private const DOMAIN = 'https://www.klsescreener.com';
+    private const KEY = ['changes in sub.','immediate announcement'];
     private function hardCodeArray(){
         return [
             [
@@ -119,6 +120,14 @@ class WebScrapKlseControler extends Controller
                 "text" => 'YTL',
                 "href" => '/v2/stocks/view/4677'
             ],
+            [
+                "text" => 'MYEG',
+                "href" => '/v2/stocks/view/0138'
+            ],
+            [
+                "text" => 'TEOSENG',
+                "href" => '/v2/stocks/view/7252'
+            ],
         ];
     }
     public function index(){
@@ -126,20 +135,20 @@ class WebScrapKlseControler extends Controller
         $marketResponse = Http::withHeaders([
             'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         ])->get($market_url);
-        
-     
+
+
         $market_crawler = new Crawler($marketResponse->body());
         $hardCodeLink = $this->hardCodeArray();
         $allowedCompanies = [
-            'AGMO', 'ARTRONIQ', 'AYS', 'CDB', 'CTOS', 'DIALOG', 'EDARAN', 'GAMUDA', 'GCB', 
-            'HLIND', 'JETSON', 'KENANGA', 'KHJB', 'KOSSAN', 'MAGMA', 'MI', 'MINHO', 'MSM', 
-            'NEXG-WB', 'PHB', 'RAMSSOL', 'TAANN', 'TOMEI', 'WPRTS', 'YTL'
+            'AGMO', 'ARTRONIQ', 'AYS', 'CDB', 'CTOS', 'DIALOG', 'EDARAN', 'GAMUDA', 'GCB',
+            'HLIND', 'JETSON', 'KENANGA', 'KHJB', 'KOSSAN', 'MAGMA', 'MI', 'MINHO', 'MSM',
+            'NEXG-WB', 'PHB', 'RAMSSOL', 'TAANN', 'TOMEI', 'WPRTS', 'YTL','MYEG', 'TEOSENG'
         ];
-        
+
         // Extract and filter links
         $links = $market_crawler->filter('span.text-primary a')->each(function (Crawler $node) use ($allowedCompanies) {
             $text = trim($node->text());
-    
+
             // Return only if the company is in the allowed list
             if (in_array($text, $allowedCompanies)) {
                 return [
@@ -149,7 +158,7 @@ class WebScrapKlseControler extends Controller
             }
             return null;
         });
-    
+
         // Remove null values (entries not in the allowed list)
         $filteredLinks = array_filter($links);
 
@@ -160,17 +169,17 @@ class WebScrapKlseControler extends Controller
         foreach ($mergedLinks as $link) {
             $uniqueLinks[$link['text']] = $link; // Store only unique values based on text
         }
-    
+
         // Convert associative array back to indexed array
         $finalLinks = array_values($uniqueLinks);
-        
+
 
         return Inertia::render('WebScrapKLSE',['data' => $finalLinks]);
 
     }
 
     public function formSubmit(Request $request){
-      
+
         $request->validate([
             'file' => 'required|file|mimes:xlsx,csv,xls',
             'stocks' => 'required'
@@ -185,36 +194,37 @@ class WebScrapKlseControler extends Controller
            $response = Http::withHeaders([
                 'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
             ])->get($url);
-            
+
             $crawler = new Crawler($response->body());
             // dd($response->body());
-            $title = $crawler->filter('div.container-fluid h3')->count() 
+            $title = $crawler->filter('div.container-fluid h3')->count()
             ? $crawler->filter('div.container-fluid h3')->text()
-            : ($crawler->filter('div.container-fluid h2')->count() 
+            : ($crawler->filter('div.container-fluid h2')->count()
                 ? $crawler->filter('div.container-fluid h2')->text()
                 : 'Title Not Found');
             $link_title_details = array_values(array_filter($crawler->filter('ul.list-group li.list-group-item.list-group-item-action')
             ->each(function (Crawler $node) {
                 $href = $node->filter('h6 a');
-                $annoDate = $node->filter('time')->attr('datetime');//
-                if(str_contains(strtolower($href->text()), 'changes in sub.') && str_contains($annoDate, now()->format('Y-m-d'))){
+                $annoDate = $node->filter('time')->attr('datetime');
+                // '2025-04-08'
+                if((str_contains(strtolower($href->text()), self::KEY[0]) || str_contains(strtolower($href->text()), self::KEY[1])) && str_contains($annoDate, now()->format('Y-m-d'))){
                     return [
-                        'href' => $href->attr('href'),
+                        'text' => $href->text(),
+                        'href' => $href->attr('href')
                     ];
                 }
             })));
-            
-            
+
             $data[$title] = $this->linkDetailsData($link_title_details);
-            
-                
+
+
         }
         $data = array_filter($data, function($item){
             return !empty($item);
         });
 
         ksort($data);
-        
+  
         $this->fillExcelSheet($worksheet, $data);
 
         // Save the modified file temporarily
@@ -239,7 +249,7 @@ class WebScrapKlseControler extends Controller
         $companyIndex = array_search("公司", $headers);
         $buyIndex = array_search("买进", $headers);
         $sellIndex = array_search('卖出', $headers);
-
+        $buyPriceIndex = array_search("买进价钱", $headers);
         $firstEmptyRow = 2;
         for ($row = 2; $row <= $highestRow; $row++) {
             $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($nameIndex + 1);
@@ -250,9 +260,9 @@ class WebScrapKlseControler extends Controller
             }
         }
         $indexNo= $firstEmptyRow-1;
-       
+
         foreach ($list_data as $company_name => $transactions) {
-            foreach ($transactions as $index => $data) {
+            foreach ($transactions as $data) {
                 foreach($data['tableData'] as $trancDate => $table_data){
                     $rowIndex = $firstEmptyRow++;
                     $date = \DateTime::createFromFormat('d M Y', $trancDate);
@@ -267,6 +277,7 @@ class WebScrapKlseControler extends Controller
                     $worksheet->setCellValue(Coordinate::stringFromColumnIndex($companyIndex + 1) . $rowIndex, $company_name);
                     $worksheet->setCellValue(Coordinate::stringFromColumnIndex($buyIndex + 1) . $rowIndex, $table_data['Acquired'] ?? null);
                     $worksheet->setCellValue(Coordinate::stringFromColumnIndex($sellIndex + 1) . $rowIndex, $table_data['Disposed'] ?? null);
+                    $worksheet->setCellValue(Coordinate::stringFromColumnIndex($buyPriceIndex + 1) . $rowIndex, $table_data['Acquired_price'] ?? null);
                     $indexNo++;
                 }
 
@@ -280,72 +291,111 @@ class WebScrapKlseControler extends Controller
             $detail_link_response = Http::withHeaders([
                 'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
             ])->get(self::DOMAIN.$link['href']);
-       
-            $crawler = new Crawler($detail_link_response->body());
-            
-            $table_column_label = $crawler->filter('table.ven_table tr')->each(function (Crawler $row) {
-                return $row->filter('td.formTableColumnLabel')->each(function (Crawler $cell) {
-                    return trim($cell->text());
-                });
-            });
-
-            $filteredData = array_filter($table_column_label, function ($item) {
-                return count($item) >= 2;
-            });
-            
-
-            $filteredData = array_values($filteredData);
-
            
-            $direct_percentage = array_values(array_filter($crawler->filter('table.InputTable2')
+            $crawler = new Crawler($detail_link_response->body());
+            if(str_contains(strtolower($link['text']), self::KEY[0])){
+                $table_column_label = $crawler->filter('table.ven_table tr')->each(function (Crawler $row) {
+                    return $row->filter('td.formTableColumnLabel')->each(function (Crawler $cell) {
+                        return trim($cell->text());
+                    });
+                });
+
+                $filteredData = array_filter($table_column_label, function ($item) {
+                    return count($item) >= 2;
+                });
+
+
+                $filteredData = array_values($filteredData);
+
+
+                $direct_percentage = array_values(array_filter($crawler->filter('table.InputTable2')
+                    ->filter('tr td.formContentLabel')
+                    ->each(function(Crawler $node) {
+                        if (str_contains(strtolower($node->text()), 'direct (%)')) {
+                            $direct_percentage = $node->siblings()->filter('td.formContentData')->text();
+                            return $direct_percentage;
+                        }
+                    })))[0] ?? 0;
+                $name = array_values(array_filter($crawler->filter('table.InputTable2')
                 ->filter('tr td.formContentLabel')
                 ->each(function(Crawler $node) {
-                    if (str_contains(strtolower($node->text()), 'direct (%)')) {
-                        $direct_percentage = $node->siblings()->filter('td.formContentData')->text();
-                        return $direct_percentage;
+                    if (str_contains(strtolower($node->text()), 'name')) {
+                        $name = $node->siblings()->filter('td.formContentData')->text();
+                        return $name;
                     }
-                })))[0] ?? 0;
-            $name = array_values(array_filter($crawler->filter('table.InputTable2')
-            ->filter('tr td.formContentLabel')
-            ->each(function(Crawler $node) {
-                if (str_contains(strtolower($node->text()), 'name')) {
-                    $name = $node->siblings()->filter('td.formContentData')->text();
-                    return $name;
-                }
-            })))[0] ?? 'Undefine Name';
-          
-            $name = str_contains(strtoupper($name),'EMPLOYEES PROVIDENT FUND BOARD')? 'EPF':$name;
-            $name = str_contains(strtoupper($name),'KUMPULAN WANG PERSARAAN')? 'KWP':$name;
-           
-            $mergedData = [];
+                })))[0] ?? 'Undefine Name';
 
-            foreach ($filteredData as $row) {
-                $date = $row[1];
-                $type = $row[3];
-                $amount = (int)str_replace(',', '', $row[2]);
-                
-                if (!in_array($type, ['Acquired', 'Disposed'])) {
-                    continue; 
-                }
-                
-                if (!isset($mergedData[$date])) {
-                    $mergedData[$date] = [];
-                }
+                $name = str_contains(strtoupper($name),'EMPLOYEES PROVIDENT FUND BOARD')? 'EPF':$name;
+                $name = str_contains(strtoupper($name),'KUMPULAN WANG PERSARAAN')? 'KWP':$name;
 
-                if (isset($mergedData[$date][$type])) {
-                    $mergedData[$date][$type] += $amount;
-                } else {
-                    $mergedData[$date][$type] = $amount;
+                $mergedData = [];
+
+                foreach ($filteredData as $row) {
+                    $date = $row[1];
+                    $type = $row[3];
+                    $amount = (int)str_replace(',', '', $row[2]);
+
+                    if (!in_array($type, ['Acquired', 'Disposed'])) {
+                        continue;
+                    }
+
+                    if (!isset($mergedData[$date])) {
+                        $mergedData[$date] = [];
+                    }
+
+                    if (isset($mergedData[$date][$type])) {
+                        $mergedData[$date][$type] += $amount;
+                    } else {
+                        $mergedData[$date][$type] = $amount;
+                    }
+                }
+            }else{
+                $name = $crawler->filter('div.stock-info h1 a')->text();
+                $direct_percentage = 0;
+                $mergedData = [];
+
+                // Extract date and amount information
+                $dateOfBuyBack = null;
+                $acquiredAmount = null;
+                $acquiredPrice  = null;
+                $crawler->filter('table.InputTable2 tr')->each(function(Crawler $node) use (&$dateOfBuyBack, &$acquiredAmount, &$direct_percentage, &$acquiredPrice) {
+                    $label = $node->filter('td.formContentLabel');
+                    if ($label->count() > 0) {
+                        $labelText = strtolower($label->text());
+                        $dataCell = $node->filter('td.formContentData');
+
+                        if ($dataCell->count() > 0) {
+                            if (str_contains($labelText, 'date of buy back')) {
+                                $dateOfBuyBack = trim($dataCell->text());
+                            } else if (str_contains($labelText, 'total number of shares purchased (units)')) {
+                                $acquiredAmount = (int)str_replace(',', '', $dataCell->text());
+                            } else if (str_contains($labelText, 'total number of shares purchased and/or held as treasury shares against total number of issued shares of the listed issuer (%)')) {
+                                $direct_percentage = trim($dataCell->text());
+                            }else if (str_contains($labelText, 'minimum price paid for each share purchased')){
+                                $acquiredPrice = trim($dataCell->text());
+                                
+                            }
+                        }
+                    }
+                });
+                // Create the same structure as in the if block
+                if ($dateOfBuyBack && $acquiredAmount ) {
+                    $mergedData[$dateOfBuyBack] = [
+                        'Acquired' => $acquiredAmount,
+                        'Acquired_price' => $acquiredPrice,
+                    ];
                 }
             }
-            
+
+
             $data[] = [
                 'tableData' => $mergedData,
                 'directPercentage' => $direct_percentage,
                 'name' => $name,
             ];
-           
+
         }
+        
         return $data;
     }
 
