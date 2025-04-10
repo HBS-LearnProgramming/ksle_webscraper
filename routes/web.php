@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\StockController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\WebScrapKlseControler;
 /*
@@ -18,5 +19,12 @@ Route::get('/', function () {
 });
 Route::get('/', [WebScrapKlseControler::class, 'index'])->name('webscrap.form');
 Route::post('/', [WebScrapKlseControler::class, 'formSubmit']);
+Route::prefix('stock')->group(function () {
+    Route::get('/', [StockController::class, 'index'])->name('stock.form');
+    Route::post('/', [StockController::class, 'formSubmit']);
+    Route::post('/{id}/delete', [StockController::class, 'delete']);
+    Route::get('/{id}/edit', [StockController::class, 'index']);
+});
+
 
 

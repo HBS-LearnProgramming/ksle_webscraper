@@ -9,11 +9,19 @@ use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\ExcelExport;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
-
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use App\Models\Stocks;
 class WebScrapKlseControler extends Controller
 {
     private const DOMAIN = 'https://www.klsescreener.com';
-    private const KEY = ['changes in sub.','immediate announcement'];
+    // define key word detection
+    private const KEY = ['changes in','immediate announcement'];
+    // define short form name
+    private const SHORT_NAME_KEY = [
+        'EMPLOYEES PROVIDENT FUND BOARD' => 'EPF',
+        'KUMPULAN WANG PERSARAAN' => 'KWP',
+        'ABRDN' => 'ABRDN'
+    ];
     private function hardCodeArray(){
         return [
             [
@@ -131,50 +139,10 @@ class WebScrapKlseControler extends Controller
         ];
     }
     public function index(){
-        $market_url = self::DOMAIN.'/v2/markets';
-        $marketResponse = Http::withHeaders([
-            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        ])->get($market_url);
+        $stocks = Stocks::all()->toArray();
 
 
-        $market_crawler = new Crawler($marketResponse->body());
-        $hardCodeLink = $this->hardCodeArray();
-        $allowedCompanies = [
-            'AGMO', 'ARTRONIQ', 'AYS', 'CDB', 'CTOS', 'DIALOG', 'EDARAN', 'GAMUDA', 'GCB',
-            'HLIND', 'JETSON', 'KENANGA', 'KHJB', 'KOSSAN', 'MAGMA', 'MI', 'MINHO', 'MSM',
-            'NEXG-WB', 'PHB', 'RAMSSOL', 'TAANN', 'TOMEI', 'WPRTS', 'YTL','MYEG', 'TEOSENG'
-        ];
-
-        // Extract and filter links
-        $links = $market_crawler->filter('span.text-primary a')->each(function (Crawler $node) use ($allowedCompanies) {
-            $text = trim($node->text());
-
-            // Return only if the company is in the allowed list
-            if (in_array($text, $allowedCompanies)) {
-                return [
-                    'text' => $text,
-                    'href' => $node->attr('href'),
-                ];
-            }
-            return null;
-        });
-
-        // Remove null values (entries not in the allowed list)
-        $filteredLinks = array_filter($links);
-
-        $mergedLinks = array_merge($filteredLinks, $hardCodeLink);
-
-        // Remove duplicates based on the 'text' field
-        $uniqueLinks = [];
-        foreach ($mergedLinks as $link) {
-            $uniqueLinks[$link['text']] = $link; // Store only unique values based on text
-        }
-
-        // Convert associative array back to indexed array
-        $finalLinks = array_values($uniqueLinks);
-
-
-        return Inertia::render('WebScrapKLSE',['data' => $finalLinks]);
+        return Inertia::render('WebScrapKLSE',['data' => $stocks]);
 
     }
 
@@ -186,7 +154,7 @@ class WebScrapKlseControler extends Controller
         ]);
         $data = [];
         $file = $request->file('file');
-        $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getRealPath());
+        $spreadsheet = IOFactory::load($file->getRealPath());
         $worksheet = $spreadsheet->getActiveSheet();
 
         foreach (json_decode($request['stocks']) as $stock) {
@@ -196,7 +164,7 @@ class WebScrapKlseControler extends Controller
             ])->get($url);
 
             $crawler = new Crawler($response->body());
-            // dd($response->body());
+       
             $title = $crawler->filter('div.container-fluid h3')->count()
             ? $crawler->filter('div.container-fluid h3')->text()
             : ($crawler->filter('div.container-fluid h2')->count()
@@ -219,12 +187,12 @@ class WebScrapKlseControler extends Controller
 
 
         }
+       
         $data = array_filter($data, function($item){
             return !empty($item);
         });
 
         ksort($data);
-  
         $this->fillExcelSheet($worksheet, $data);
 
         // Save the modified file temporarily
@@ -234,6 +202,7 @@ class WebScrapKlseControler extends Controller
 
         return response()->download($tempFilePath, 'updated_' . $file->getClientOriginalName())->deleteFileAfterSend(true);
     }
+
 
     private function fillExcelSheet($worksheet, $list_data)
     {
@@ -250,23 +219,47 @@ class WebScrapKlseControler extends Controller
         $buyIndex = array_search("买进", $headers);
         $sellIndex = array_search('卖出', $headers);
         $buyPriceIndex = array_search("买进价钱", $headers);
-        $firstEmptyRow = 2;
+        
+        // First, collect all existing data (starting from row 2)
+        $existingData = [];
         for ($row = 2; $row <= $highestRow; $row++) {
-            $colLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($nameIndex + 1);
-            $cellValue = $worksheet->getCell($colLetter . $row)->getValue();
-            if ($cellValue === null) {
-                $firstEmptyRow = $row;
-                break;
+            $nameColLetter = Coordinate::stringFromColumnIndex($nameIndex + 1);
+            $cellValue = $worksheet->getCell($nameColLetter . $row)->getValue();
+            
+            if ($cellValue !== null) {
+                // Collect all data from this row
+                $rowData = [];
+                foreach ($headers as $index => $header) {
+                    $colLetter = Coordinate::stringFromColumnIndex($index + 1);
+                    $rowData[$index] = $worksheet->getCell($colLetter . $row)->getValue();
+                }
+                $existingData[] = $rowData;
             }
         }
-        $indexNo= $firstEmptyRow-1;
 
+        if ($annoDateIndex !== false && !empty($existingData)) {
+            usort($existingData, function($a, $b) use ($annoDateIndex) {
+                // Handle null values
+                if ($a[$annoDateIndex] === null) return 1;
+                if ($b[$annoDateIndex] === null) return -1;
+                
+                // Sort in descending order (newest first)
+                return $b[$annoDateIndex] <=> $a[$annoDateIndex];
+            });
+        }
+        
+        // Start inserting new data from row 2 (after headers)
+        $currentRow = 2;
+        $indexNo = 1; // Start numbering from 1
+        
+        // Insert new data
         foreach ($list_data as $company_name => $transactions) {
             foreach ($transactions as $data) {
                 foreach($data['tableData'] as $trancDate => $table_data){
-                    $rowIndex = $firstEmptyRow++;
+                    $rowIndex = $currentRow++;
                     $date = \DateTime::createFromFormat('d M Y', $trancDate);
                     $excelDate = ($date) ? Date::PHPToExcel($date) : $trancDate;
+                    
                     // Fill data into respective columns
                     $currentDate = Date::PHPToExcel(now());
                     $worksheet->setCellValue(Coordinate::stringFromColumnIndex($noIndex + 1) . $rowIndex, $indexNo);
@@ -280,7 +273,22 @@ class WebScrapKlseControler extends Controller
                     $worksheet->setCellValue(Coordinate::stringFromColumnIndex($buyPriceIndex + 1) . $rowIndex, $table_data['Acquired_price'] ?? null);
                     $indexNo++;
                 }
-
+            }
+        }
+        
+        // Now append the existing data after the new data
+        foreach ($existingData as $rowData) {
+            $rowIndex = $currentRow++;
+            
+            // Adjust the NO column to continue numbering
+            if ($noIndex !== false) {
+                $rowData[$noIndex] = $indexNo++;
+            }
+            
+            // Write the existing data back to the worksheet
+            foreach ($rowData as $index => $value) {
+                $colLetter = Coordinate::stringFromColumnIndex($index + 1);
+                $worksheet->setCellValue($colLetter . $rowIndex, $value);
             }
         }
     }
@@ -325,8 +333,13 @@ class WebScrapKlseControler extends Controller
                     }
                 })))[0] ?? 'Undefine Name';
 
-                $name = str_contains(strtoupper($name),'EMPLOYEES PROVIDENT FUND BOARD')? 'EPF':$name;
-                $name = str_contains(strtoupper($name),'KUMPULAN WANG PERSARAAN')? 'KWP':$name;
+                // detect the name and change it to short form
+                foreach(self::SHORT_NAME_KEY as $key => $value){
+                    $name = str_contains(strtoupper($name), $key)? $value:$name;
+                }
+                if(preg_match('/^(.*?)\s+BIN\s+/i', $name, $matches)){
+                    $name = $matches[1] ?? $name;
+                }
 
                 $mergedData = [];
 
@@ -395,6 +408,39 @@ class WebScrapKlseControler extends Controller
             ];
 
         }
+        $grouped = [];
+        foreach ($data as $item) {
+            $key = serialize([
+                'name' => $item['name'],
+                'directPercentage' => $item['directPercentage'],
+                'tableData' => array_keys($item['tableData']), // only use dates to group
+            ]);
+            
+            if (!isset($grouped[$key])) {
+                $grouped[$key] = [
+                    'record' => $item,
+                    'count' => 1
+                ];
+            } else {
+                $grouped[$key]['count']++;
+
+                // Multiply Acquired for existing date(s)
+                foreach ($item['tableData'] as $date => $transaction) {
+                    foreach ($transaction as $type => $amount) {
+                        if (isset($grouped[$key]['record']['tableData'][$date][$type])) {
+                            $grouped[$key]['record']['tableData'][$date][$type] += $amount;
+                        } else {
+                            $grouped[$key]['record']['tableData'][$date][$type] = $amount;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Final deduplicated array
+        $data = array_map(function ($entry) {
+            return $entry['record'];
+        }, array_values($grouped));
         
         return $data;
     }

@@ -15,7 +15,7 @@
                 validate-trigger="false"
             >
                 <a-select v-model="form.stocks" placeholder="Select the stock for scrap" multiple allow-clear>
-                    <a-option v-for="option in options" :value="option.href">{{ option.text }}</a-option>
+                    <a-option v-for="option in options" :value="option.href">{{ option.name }}</a-option>
                 </a-select>
                 <a-button class="ml-2" type="outline" @click="handleClickAll()">Select all</a-button>
             </a-form-item>
@@ -78,7 +78,6 @@ import { Message } from "@arco-design/web-vue";
 import msMY from "@arco-design/web-vue/es/locale/lang/en-US";
 import { onMounted, ref, inject, watch, markRaw } from "vue";
 import { useAppStore } from "@/Store";
-import { IconUser, IconStorage, IconDashboard, IconMessage, IconRefresh, IconImport, IconBookmark } from '@arco-design/web-vue/es/icon';
 import axios from "axios";
 export default {
     props: ['data'],
@@ -102,6 +101,7 @@ export default {
             try {
                 swal.fire({
                     title: "Scraping...",
+                    text: "Please wait a minute...",
                     didOpen: () => {
                         swal.showLoading();
                     },
@@ -127,6 +127,7 @@ export default {
                
             } catch (error) {
                 console.log('Error: ', error);
+                swal.close();
                 Message.error("Failed to download file");
             }
         }
