@@ -1,5 +1,6 @@
 <template>
     <Container class="h-screen">
+        <a-link href="/stock"><icon-left /> Back to create stock page</a-link>
         <h1 class="title">Stocks options form</h1>
         <a-form 
             ref="formRef"
