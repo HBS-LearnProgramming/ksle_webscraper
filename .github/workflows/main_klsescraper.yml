@@ -74,5 +74,6 @@ jobs:
         with:
           app-name: 'klseScraper'
           slot-name: 'Production'
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
           package: .
           
