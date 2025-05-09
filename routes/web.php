@@ -25,6 +25,7 @@ Route::prefix('stock')->group(function () {
     Route::post('/{id}/delete', [StockController::class, 'delete']);
     Route::get('/{id}/edit', [StockController::class, 'index']);
 });
+Route::get('/autoGenerate', [WebScrapKlseControler::class, 'autoGenerate']);
 
 
 

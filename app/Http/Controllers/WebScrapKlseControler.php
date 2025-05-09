@@ -152,6 +152,7 @@ class WebScrapKlseControler extends Controller
             'file' => 'required|file|mimes:xlsx,csv,xls',
             'stocks' => 'required'
         ]);
+        // C:\laragon\www\ksle_webscraper\public\2025_04_30_KSLE_Scraper.xlsx
         $data = [];
         $file = $request->file('file');
         $spreadsheet = IOFactory::load($file->getRealPath());
@@ -202,7 +203,63 @@ class WebScrapKlseControler extends Controller
 
         return response()->download($tempFilePath, 'updated_' . $file->getClientOriginalName())->deleteFileAfterSend(true);
     }
+    public function autoGenerate(){
 
+        $stocks = Stocks::all()->toArray();
+        
+        // C:\laragon\www\ksle_webscraper\public\2025_04_30_KSLE_Scraper.xlsx
+        $data = [];
+        
+        $spreadsheet = IOFactory::load('C:\laragon\www\ksle_webscraper\public\2025_04_30_KSLE_Scraper.xlsx');
+        
+        $worksheet = $spreadsheet->getActiveSheet();
+        
+        foreach ($stocks as $stock) {
+           $url = self::DOMAIN.$stock['href'];
+         
+           $response = Http::withHeaders([
+                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+            ])->get($url);
+
+            $crawler = new Crawler($response->body());
+       
+            $title = $crawler->filter('div.container-fluid h3')->count()
+            ? $crawler->filter('div.container-fluid h3')->text()
+            : ($crawler->filter('div.container-fluid h2')->count()
+                ? $crawler->filter('div.container-fluid h2')->text()
+                : 'Title Not Found');
+            $link_title_details = array_values(array_filter($crawler->filter('ul.list-group li.list-group-item.list-group-item-action')
+            ->each(function (Crawler $node) {
+                $href = $node->filter('h6 a');
+                $annoDate = $node->filter('time')->attr('datetime');
+                // '2025-04-08'
+                if((str_contains(strtolower($href->text()), self::KEY[0]) || str_contains(strtolower($href->text()), self::KEY[1])) && str_contains($annoDate, now()->format('Y-m-d'))){
+                    return [
+                        'text' => $href->text(),
+                        'href' => $href->attr('href')
+                    ];
+                }
+            })));
+
+            $data[$title] = $this->linkDetailsData($link_title_details);
+
+
+        }
+       
+        $data = array_filter($data, function($item){
+            return !empty($item);
+        });
+
+        ksort($data);
+        $this->fillExcelSheet($worksheet, $data);
+
+        // Save the modified file temporarily
+        $tempFilePath = storage_path('app/temp_filled_excel.xlsx');
+        $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+        $writer->save($tempFilePath);
+
+        return response()->download($tempFilePath, now()->format('Y_m_d_').'KSLE_Scraper.xlsx')->deleteFileAfterSend(true);
+    }
 
     private function fillExcelSheet($worksheet, $list_data)
     {
